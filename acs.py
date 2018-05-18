@@ -1,9 +1,9 @@
 from random import shuffle, uniform
 from sys import float_info
-
 import numpy as np
 from geopy.geocoders import Nominatim
 from geopy import distance
+
 
 def euc_2d(c1, c2):
     """
@@ -14,9 +14,10 @@ def euc_2d(c1, c2):
     :param c2: Координаты точки конца.
     :return: Эвклидово растояние между двумя точками(`c1`, `c2`).
     """
-    point1 =   (c1[0],c1[1])
-    point2 =   (c2[0],c2[1])
+    point1 = (c1[0], c1[1])
+    point2 = (c2[0], c2[1])
     return (distance.distance(point1, point2).km)
+
 
 # return distance.distance(c1, c2).km
 
@@ -42,34 +43,20 @@ def fitness(way):
     :param way: Маршрут, для которого будет проводится оценка.
     :return: score маршрута.
     """
+
     value = 0
     for i in range(len(way) - 1):
         value += euc_2d(way[1], way[i + 1])
 
     return value
 
-def update_pg_global(alpha, way, ph):
-    cost = fitness(way)
+
+def update_ph(alpha, cities, way, ph):
+    # бновление матрицы феромонов
     for i in range(len(ph)):
         for j in range(len(ph)):
-            ph[i][j] = ((1-alpha)* ph[i][j]) + alpha * (1 / cost)
-    print(ph)
-
-def update_ph(ph, cities, way, p):
-    """
-    Обновление матрицы феромонов
-
-    :param ph: Матрица феромонов
-    :param cities: Список городов
-    :param way: Маршрут
-    """
-    cost = fitness(way)
-    if cost == 0:
-        cost = float_info.epsilon
-    for i in range(len(way) - 1): #????
-        c_from = cities.index(way[i])
-        c_to = cities.index(way[i + 1])
-        ph[c_from][c_to] = (1 - p) * (ph[c_from][c_to]) + p * ( 1 / cost)
+            delta = delta_ph(i, j, cities, way)
+            ph[i][j] = (1 - alpha) * ph[i][j] + alpha * delta
 
 
 def decay_ph(ph, alpha):
@@ -95,28 +82,42 @@ def STR(ph, beta, cities, way, q0):
     :param way: Пройденный маршрут
     :return: Кортеж, с координатами города.
     """
-    #q0-задает пользователь
+    # q0-задает пользователь
+
     transitions = set(cities) - set(way)
     c_from = cities.index(way[-1])
-    q = uniform(0,1)
+
     s = []
-    transitions_l=list(transitions)
-    for item in transitions:
+    transitions_list = list(transitions)
+    for item in transitions_list:
         s.append(ph[c_from][cities.index(item)] * (1 / euc_2d(way[-1], item)) ** beta)
 
-    # правило рулетки
-    if (q<=q0):
-        return transitions_l[s.index(max(s))]
-    else:
-        probability = uniform(0, 1)
-        total_pr = 0
-        for item in transitions:
-            total_pr += (ph[c_from][cities.index(item)] * (1 / euc_2d(way[-1], item)) ** beta) / sum(s)
-            if probability <= total_pr:
-                return item
+    q = uniform(0, 1)
+    if q <= q0:
+        return transitions_list[s.index(max(s))]
+
+    probability = uniform(0, 1)
+    total_pr = 0
+    for item in transitions:
+        total_pr += (ph[c_from][cities.index(item)] * (1 / euc_2d(way[-1], item)) ** beta) / sum(s)
+        if probability <= total_pr:
+            return item
 
 
-def search(cities, alpha, betta, n, m, q0, first_pos=0 ):
+
+def delta_ph(i, j, cities, way):
+    # считаем дельту
+    length = 0
+    way_indexes = [cities.index(y) for y in way]
+    if i in way_indexes and way_indexes.index(i) + 1 == j:
+        for i in range(len(way) - 1):
+            length += distance.distance(way[i], way[i + 1]).km
+        return (length) ** -1
+
+    return 0
+
+
+def search(cities, alpha, betta, n, m, q0, p ,first_pos=0):
     """
     Поиск маршрута, проходящего через задание города(`cities`).
 
@@ -141,38 +142,44 @@ def search(cities, alpha, betta, n, m, q0, first_pos=0 ):
             while len(way) < len(cities):
                 current = STR(ph, betta, cities, way, q0)
                 way.append(current)
-         #       decay_ph(ph, alpha)
-                cost = fitness(way)
-                update_ph(ph, cities, way, 0.1)
 
-                if best_cost == 0 or cost < best_cost:
-                     best_cost = cost
-                     best_way = way
-        #decay_ph(ph,alpha)
-        update_pg_global(alpha,best_way,ph)
+            decay_ph(ph, alpha)
+            cost = fitness(way)
+            update_ph(p,cities, way,ph)
+
+            if best_cost == 0 or cost < best_cost:
+                 best_cost = cost
+                 best_way = way
+        # decay_ph(ph,alpha)
+        update_ph(alpha, cities, best_way, ph)
     return best_way
-
 
 
 def demonstrate():
     """
     Демонстрация примера использования, с виводом на стандартный поток.
     """
-    geolocator = Nominatim()
-    f = open("cities.txt") #открыли файл
+    geolocator = Nominatim(timeout=3)
+    f = open("cities.txt")  # открыли файл
     cities = []
-    #инициализируем массив координатами городов
-    #for line in f.readlines():
-     #   location = geolocator.geocode(line)
-      #  cities.append((location.latitude, location.longitude))  # широта долгот
+    # инициализируем массив координатами городов
+    for line in f.readlines():
+      location = geolocator.geocode(line)
+      cities.append((location.latitude, location.longitude))  # широта долгот
 
-    cities = [(0, 20), (20, 50), (30, 20), (50, 100),(67, 56)]
-    alpha = 5
-    q0= 0.5
-    betta = 1
-    way = search(cities, alpha, betta, 2, 20, q0)
+  #  cities = [(23, 20), (20, 50), (30, 20), (50, 100), (67, 56)]
+    n = 2
+    alpha = 0.2
+    betta = 2
+    q0 = 0.4
+    p = 0.7
+    m = 20
+
+#    def search(cities, alpha, betta, n, m, q0, p, first_pos=0):
+    way = search(cities, alpha, betta, n, m, p,q0)
     print(fitness(way))
     print(way)
     f.close()
+
 
 demonstrate()

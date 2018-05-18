@@ -2,6 +2,8 @@ from random import shuffle, uniform
 from sys import float_info
 from geopy.geocoders import Nominatim
 from geopy import distance
+from geopy.exc import GeocoderTimedOut
+
 
 def euc_2d(c1, c2):
     """
@@ -143,15 +145,15 @@ def demonstrate():
     """
     Демонстрация примера использования, с виводом на стандартный поток.
     """
+
     geolocator = Nominatim()
     f = open("cities.txt") #открыли файл
     cities = []
     #инициализируем массив координатами городов
- #   for line in f.readlines():
-  #      location = geolocator.geocode(line)
-   #     cities.append((location.latitude, location.longitude))  # широта долгот
+    for line in f.readlines():
+       location = geolocator.geocode(line)
+       cities.append((location.latitude, location.longitude))  # широта долгот
 
-    cities = [(1, -5), (1, 7)]
     alpha = 1
     betta = 1
     way = search(cities, alpha, betta, 20)
